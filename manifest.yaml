@@ -21,7 +21,7 @@ spec:
           effect: NoSchedule
       containers:
       - name: iperf3-client
-        image: sofianinho/iperf3:3.6-ubuntu18.04
+        image: quay.io/support-tools/net-tools
         command: ['/bin/sh', '-c', 'sleep infinity']
       terminationGracePeriodSeconds: 0
 
@@ -49,7 +49,7 @@ spec:
           effect: NoSchedule
       containers:
       - name: iperf3-server
-        image: sofianinho/iperf3:3.6-ubuntu18.04
+        image: quay.io/support-tools/net-tools
         command: ['/bin/sh', '-c', 'iperf3 -s']     
       terminationGracePeriodSeconds: 0
 

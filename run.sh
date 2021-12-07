@@ -121,7 +121,7 @@ function runiperf
   set -x
   #TODO: add for-loop with different test cases
   #TODO: output as json info a folder
-  oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -c "$SPOD_IP" serverip -t "$TESTTIME"
+  oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -c "$SPOD_IP" -t "$TESTTIME"
   set +x
 }
 
