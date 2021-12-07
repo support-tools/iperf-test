@@ -20,6 +20,17 @@ set -euf -o pipefail
 # udp / bitrate 10M / bitrate 100M / bitrate 1Gbit
 # tcp / bitrate unlimited / inital windows size 1
 
+#TEST SETTTINGS
+TESTTIME=10
+
+TEST_CASES=(
+""
+"-u -b 10M"
+"-u -b 100M"
+"-u -b 1G"
+)
+
+
 function listnodes
 {
     oc get nodes -o jsonpath='{range .items[*].metadata.labels}{.kubernetes\.io/hostname}{"\n"}'
@@ -56,10 +67,8 @@ fi
 #TODO: check usage ^
 RUNDIR=$(dirname $0)
 NAMESPACE=iperftest-$RANDOM
-TESTTIME=10
 
 #check nodes
-
 NODEA="$1"
 checknodename "$NODEA"
 $SN || NODEB="$2"
@@ -118,11 +127,18 @@ function runiperf
   CPOD_IP=$(getpodip "$CPOD")  
 
   #Exec iperf
-  set -x
+  
   #TODO: add for-loop with different test cases
   #TODO: output as json info a folder
-  oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -c "$SPOD_IP" -t "$TESTTIME"
-  set +x
+
+  for ((i = 0; i < ${#TEST_CASES[@]}; i++))
+  do
+    echo "TEST:" "${TEST_CASES[$i]}"
+    set -x
+    oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -c "$SPOD_IP" -t "$TESTTIME" ${TEST_CASES[$i]}
+    set +x
+  done
+ 
 }
 
 
