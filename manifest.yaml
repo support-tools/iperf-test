@@ -1,0 +1,55 @@
+---
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: iperf3-clients
+  labels:
+    app: iperf3-client
+spec:
+  selector:
+    matchLabels:
+      app: iperf3-client
+  template:
+    metadata:
+      labels:
+        app: iperf3-client
+    spec:
+      tolerations:
+        - key: ""
+          operator: Exists
+          effect: NoSchedule
+      containers:
+      - name: iperf3-client
+        image: sofianinho/iperf3:3.6-ubuntu18.04
+        command: ['/bin/sh', '-c', 'sleep infinity']
+      terminationGracePeriodSeconds: 0
+
+
+---
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: iperf3-server
+  labels:
+    app: iperf3-server
+spec:
+  selector:
+    matchLabels:
+      app: iperf3-server
+  template:
+    metadata:
+      labels:
+        app: iperf3-server
+    spec:
+      tolerations:
+        - key: ""
+          operator: Exists
+          effect: NoSchedule
+      containers:
+      - name: iperf3-server
+        image: sofianinho/iperf3:3.6-ubuntu18.04
+        command: ['/bin/sh', '-c', 'iperf3 -s']     
+      terminationGracePeriodSeconds: 0
+
