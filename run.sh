@@ -3,7 +3,7 @@ set -euf -o pipefail
 
 #Prerequistes
 ## OC is logged into cluster
-## user can create namespaces.
+## user can create namespaces and daemonsets.
 
 #This script with run an iperf on each node betweent the client and server pod, then test between the nodes [if two nodes are set]
 
@@ -21,15 +21,20 @@ set -euf -o pipefail
 # tcp / bitrate unlimited / inital windows size 1
 
 #TEST SETTTINGS
-TESTTIME=10
+
+TESTTIME=300
 
 TEST_CASES=(
 ""
+"-Z"
+"-u -b 1M"
+"-u -b 5M"
 "-u -b 10M"
 "-u -b 100M"
-"-u -b 1G"
+"-u -b 200M"
+"-Z -u -b 200M"
+"-u -b 500M"
 )
-
 
 function listnodes
 {
@@ -47,15 +52,19 @@ function checknodename
     fi
 }
 
-if [[ $# -ne 1 ]] && [[ $# -ne 2 ]]
+if [[ $# -ne 2 ]] && [[ $# -ne 3 ]]
 then
  echo "Invalid Arguments"
- echo "Syntax: $0 node1 [node2]"
+ echo "Syntax: $0 4|6 node1 [node2]"
+ echo "Example: $0 4 worker1 worker2"
+ echo "Example: $0 6 worker1 worker2"
+ echo "Possible Nodes:"
+ listnodes
  exit 1
 fi
 
 #SN == single node used to mask commands using "||"" if SN=true the second operand is skipped.
-if [ $# -eq 2 ]
+if [ $# -eq 3 ]
 then
  SN=false
  echo "Running double node test"
@@ -68,10 +77,19 @@ fi
 RUNDIR=$(dirname $0)
 NAMESPACE=iperftest-$RANDOM
 
+IPFAMILY="$1"
+if [[ "$IPFAMILY" -ne 4 ]] && [[ "$IPFAMILY" -ne 6 ]]
+then
+  echo Invalid ip address family, first argument must be 4 or 6
+  echo $0 4 or $0 6 
+  exit 1
+fi
+
 #check nodes
-NODEA="$1"
+
+NODEA="$2"
 checknodename "$NODEA"
-$SN || NODEB="$2"
+$SN || NODEB="$3"
 $SN || checknodename "$NODEB"
 
 #Create Namespace for this test
@@ -109,41 +127,59 @@ function getserverpod
 #pass pod/name and get pod ipaddr
 function getpodip
 {
-  oc get -n "$NAMESPACE" "$1" -o jsonpath="{.status.podIP}"
+  
+  if [[ "$IPFAMILY" -eq 4 ]]
+  then
+    #IPV4
+    oc get -n "$NAMESPACE" "$1" -o jsonpath="{.status.podIP}"
+  else
+    #IPv6
+    #HACK: Terrible ipv6 filtering. but does the job
+    oc get -n "$NAMESPACE" "$1" -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | egrep "([a-fA-F0-9]*:?)+(:[a-fA-F0-9]+)"
+  fi
 }
 
-#TODO: create folder for test results
+#create folder for test results
+RUNNAME="iperf_$( date "+%s" )"
+RESULTS="$RUNDIR/$RUNNAME"
+echo Results stored in $RESULTS
+mkdir -p "$RESULTS"
 
+#Store some cluster info
+oc get pods -n "$NAMESPACE" -o yaml > "$RESULTS/pods.yaml"
+oc get Network.config.openshift.io cluster -o yaml > "$RESULTS/networkconfig.yaml"
 
 #Run iperfs
 function runiperf
 {
   local NODEA="$1"
   local NODEB="$2"
-  echo Running test between "$NODEA" "$NODEB"
+  
   CPOD=$(getclientpod "$NODEA")
   SPOD=$(getserverpod "$NODEB")
   SPOD_IP=$(getpodip "$SPOD")
   CPOD_IP=$(getpodip "$CPOD")  
 
-  #Exec iperf
-  
-  #TODO: add for-loop with different test cases
-  #TODO: output as json info a folder
-
   for ((i = 0; i < ${#TEST_CASES[@]}; i++))
   do
-    echo "TEST:" "${TEST_CASES[$i]}"
+    FLATARGS="$( tr '[:space:]' _ <<<${TEST_CASES[$i]} )"
+    RESULTFILE="$RESULTS/${NODEA}_${NODEB}_${FLATARGS}.json"
     set -x
-    oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -c "$SPOD_IP" -t "$TESTTIME" ${TEST_CASES[$i]}
+    oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -J -c "$SPOD_IP" -t "$TESTTIME" ${TEST_CASES[$i]} | tee "$RESULTFILE"
     set +x
   done
  
 }
-
 
 runiperf "$NODEA" "$NODEA"
 $SN || runiperf "$NODEB" "$NODEB"
 
 #Internode
 $SN || runiperf "$NODEA" "$NODEB"
+
+
+echo "!!! Success !!!"
+echo Results in "$RESULTS"
+tar -cvf "$RESULTS.tar.gz" "$RESULTS"
+
+echo "Please attach" "$RESULTS.tar.gz" "to your case"
