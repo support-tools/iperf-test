@@ -24,15 +24,13 @@ set -euf -o pipefail
 
 TESTTIME=300
 
+#IF TESTTIME = 300 and 2 nodes selected, each test case will take 15minutes.
 TEST_CASES=(
 ""
-"-Z"
 "-u -b 1M"
-"-u -b 5M"
 "-u -b 10M"
 "-u -b 100M"
-"-u -b 200M"
-"-Z -u -b 200M"
+"-u -b 250M"
 "-u -b 500M"
 )
 
@@ -163,9 +161,18 @@ function runiperf
   for ((i = 0; i < ${#TEST_CASES[@]}; i++))
   do
     FLATARGS="$( tr '[:space:]' _ <<<${TEST_CASES[$i]} )"
-    RESULTFILE="$RESULTS/${NODEA}_${NODEB}_${FLATARGS}.json"
+    RESULTFILE="${NODEA}_${NODEB}_${FLATARGS}.json"
+
     set -x
-    oc -n "$NAMESPACE" exec -it "$CPOD" -- iperf3 -J -c "$SPOD_IP" -t "$TESTTIME" ${TEST_CASES[$i]} | tee "$RESULTFILE"
+    #when iperf3 runs in jsonmode it does not output anything untill compleate, this causes the exec commaned socket to get marked idle and killed.
+    #We simply poll using bash and copy the results back.
+
+    oc -n "$NAMESPACE" exec "$CPOD" -- iperf3 -J -c "$SPOD_IP" -t "$TESTTIME" --logfile "/tmp/$RESULTFILE" ${TEST_CASES[$i]}
+    #wait for iperf is compleate
+    oc -n "$NAMESPACE" exec -it "$CPOD" -- bash -c 'while [ "$( pgrep iperf3 | wc -l)" -eq 1 ] ; do echo -n .; sleep 5 ; done; echo finished'
+    #Copy results back
+    oc -n "$NAMESPACE" exec -it "$CPOD" -- cat "/tmp/$RESULTFILE" > "$RESULTS/$RESULTFILE"
+
     set +x
   done
  
