@@ -103,6 +103,16 @@ oc create namespace "$NAMESPACE"
 #Deploy daemonsets
 oc apply -n "$NAMESPACE" -f "$RUNDIR"/manifest.yaml
 
+#Add Node afinity to ds
+$SN && NODESJSON="\"$NODEA\""
+$SN || NODESJSON="\"$NODEA\", \"$NODEB\""
+
+PATCH='[{"op": "replace", "path": "/spec/template/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution/nodeSelectorTerms/0/matchExpressions/0/values", "value": [ NODES ] }]'
+PATCH="$( sed "s|NODES|$NODESJSON|" <<<$PATCH )"
+
+#Apply node selectors
+oc -n "$NAMESPACE" patch -f ./manifest.yaml --type='json' -p="$PATCH"
+
 #wait for all the pods to be ready
 echo "Waiting for all pods to be ready"
 sleep 5 #Give DS time to make pods
@@ -162,7 +172,7 @@ function runiperf
   do
     FLATARGS="$( tr '[:space:]' _ <<<${TEST_CASES[$i]} )"
     RESULTFILE="${NODEA}_${NODEB}_${FLATARGS}.json"
-
+    echo TEST "$NODEA" to "$NODEB" ARGS: "${TEST_CASES[$i]}"
     set -x
     #when iperf3 runs in jsonmode it does not output anything untill compleate, this causes the exec commaned socket to get marked idle and killed.
     #We simply poll using bash and copy the results back.
